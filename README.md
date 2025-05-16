@@ -1,91 +1,63 @@
 --// Serviços
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
 
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
---// Variáveis
-local ESPEnabled = false
-local ESPBoxes = {}
+--// Configurações
+local AimbotAtivo = false
+local TeclaAimbot = Enum.UserInputType.MouseButton2 -- botão direito do mouse
+local ParteParaMirar = "Head" -- ou "HumanoidRootPart"
+local ChecarTime = true
+local DistanciaMaximaDaTela = 120 -- FOV em pixels
 
---// Criar GUI
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ESPGui"
-ScreenGui.Parent = PlayerGui
+--// Função para encontrar o inimigo mais próximo
+local function PegarAlvoMaisProximo()
+    local alvoMaisProximo = nil
+    local menorDistancia = DistanciaMaximaDaTela
 
-local ToggleButton = Instance.new("TextButton")
-ToggleButton.Size = UDim2.new(0, 120, 0, 40)
-ToggleButton.Position = UDim2.new(0, 10, 0, 10)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-ToggleButton.TextColor3 = Color3.new(1, 1, 1)
-ToggleButton.Text = "Ativar ESP"
-ToggleButton.Parent = ScreenGui
-
---// Função para criar a box de ESP em cada personagem
-local function CreateESPBox(character)
-    local box = Instance.new("BoxHandleAdornment")
-    box.Adornee = character:FindFirstChild("HumanoidRootPart")
-    box.AlwaysOnTop = true
-    box.ZIndex = 10
-    box.Size = Vector3.new(4, 6, 1)
-    box.Transparency = 0.5
-    box.Color3 = Color3.new(1, 0, 0) -- Vermelho por padrão
-    box.Parent = character:FindFirstChild("HumanoidRootPart")
-    return box
-end
-
---// Atualizar as caixas ESP para todos os jogadores inimigos
-local function UpdateESP()
-    -- Limpar ESPBoxes para jogadores que saíram ou estão no mesmo time
-    for player, box in pairs(ESPBoxes) do
-        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or player.Team == LocalPlayer.Team then
-            if box and box.Parent then
-                box:Destroy()
-            end
-            ESPBoxes[player] = nil
-        end
-    end
-
-    if ESPEnabled then
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer and player.Team ~= LocalPlayer.Team then
-                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                    if not ESPBoxes[player] then
-                        ESPBoxes[player] = CreateESPBox(player.Character)
+    for _, jogador in pairs(Players:GetPlayers()) do
+        if jogador ~= LocalPlayer and jogador.Character and jogador.Character:FindFirstChild(ParteParaMirar) then
+            if not ChecarTime or jogador.Team ~= LocalPlayer.Team then
+                local parte = jogador.Character[ParteParaMirar]
+                local posicaoNaTela, visivel = Camera:WorldToViewportPoint(parte.Position)
+                if visivel then
+                    local centro = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+                    local distancia = (Vector2.new(posicaoNaTela.X, posicaoNaTela.Y) - centro).Magnitude
+                    if distancia < menorDistancia then
+                        menorDistancia = distancia
+                        alvoMaisProximo = parte
                     end
                 end
             end
         end
-    else
-        -- Se ESP desligado, destruir todas as boxes
-        for player, box in pairs(ESPBoxes) do
-            if box and box.Parent then
-                box:Destroy()
-            end
-        end
-        ESPBoxes = {}
     end
+
+    return alvoMaisProximo
 end
 
---// Toggle ESP
-ToggleButton.MouseButton1Click:Connect(function()
-    ESPEnabled = not ESPEnabled
-    ToggleButton.Text = ESPEnabled and "Desativar ESP" or "Ativar ESP"
-    UpdateESP()
-end)
-
---// Atualiza constantemente enquanto ESP estiver ativo (para acompanhar respawns e time changes)
-RunService.Heartbeat:Connect(function()
-    if ESPEnabled then
-        UpdateESP()
+--// Atualiza a mira automaticamente
+RunService.RenderStepped:Connect(function()
+    if AimbotAtivo then
+        local alvo = PegarAlvoMaisProximo()
+        if alvo then
+            local direcao = (alvo.Position - Camera.CFrame.Position).Unit
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, Camera.CFrame.Position + direcao)
+        end
     end
 end)
 
---// Limpar ESP ao sair do jogo
-Players.PlayerRemoving:Connect(function(player)
-    if ESPBoxes[player] then
-        ESPBoxes[player]:Destroy()
-        ESPBoxes[player] = nil
+--// Ativa e desativa o aimbot quando segurar o botão direito do mouse
+UserInputService.InputBegan:Connect(function(tecla, processado)
+    if tecla.UserInputType == TeclaAimbot then
+        AimbotAtivo = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(tecla, processado)
+    if tecla.UserInputType == TeclaAimbot then
+        AimbotAtivo = false
     end
 end)
